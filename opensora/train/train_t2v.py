@@ -14,7 +14,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional
-
+import json
 import numpy as np
 from einops import rearrange
 from tqdm import tqdm
@@ -315,16 +315,49 @@ def main(args):
     )
 
     # Setup data:
-    train_dataset = getdataset(args)
+    num_samples = 16
+    # make a fake video dataset with only one video repeated for n times
+    video_data = json.load(open(args.data_path, "r"))
+    video_data = video_data[0:1] * num_samples
+    new_json_file = os.path.join(args.output_dir, "created_dataset", "data.json")
+    os.makedirs(os.path.dirname(new_json_file), exist_ok=True)
+    with open(new_json_file, "w") as f:
+        json.dump(video_data, f)
+    args.data_path = new_json_file  # change to created dataset
+
+    # create a list of timesteps
+    timesteps = np.linspace(0, diffusion.num_timesteps, num_samples).astype(np.int32)
+    # create/load a random noise tensor (for diffusion forward steps)
+    noise_fp = os.path.join(args.output_dir, "noise.npy")
+    if not os.path.exists(noise_fp):
+        noise = np.random.randn(
+            4, video_length + args.use_image_num, latent_size[0], latent_size[1]
+        )  # random noise added to the latent features
+        np.save(noise_fp, noise)
+    else:
+        noise = np.load(noise_fp)
+        logger.info(f"Load noise from {noise_fp}")
+    kwargs = {"timesteps": timesteps, "noise": noise}
+    train_dataset = getdataset(args, kwargs)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        shuffle=True,
+        shuffle=False,  # fix randomness
         # collate_fn=Collate(args),  # TODO: do not enable dynamic mask in this point
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-
+    # check if each batch is the same
+    pre_load_batch = None
+    for i, batch in enumerate(train_dataloader):
+        if pre_load_batch is None:
+            pre_load_batch = batch
+        else:
+            for j, (item0, item1) in enumerate(zip(pre_load_batch, batch)):
+                if j != 3:
+                    assert np.allclose(item0.numpy(), item1.numpy()), f"Mismatch between batch0 and batch{i}"
+    logger.info("The dataset randomness test has passed. The randomness from dataloader is removed.")
     # Scheduler and math around the number of training steps.
+    
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
@@ -406,10 +439,11 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
-        for step, (x, input_ids, cond_mask) in enumerate(train_dataloader):
+        for step, (x, input_ids, cond_mask, timestep, noise) in enumerate(train_dataloader):
             with accelerator.accumulate(model):
                 # Sample noise that we'll add to the latents
                 x = x.to(accelerator.device)  # B C T+num_images H W, 16 + 4
+                noise = torch.tensor(noise, device=accelerator.device)
                 # attn_mask = attn_mask.to(device)  # B T H W
                 # assert torch.all(attn_mask.bool()), 'do not enable dynamic input'
                 attn_mask = None
@@ -434,8 +468,10 @@ def main(args):
                         cond = torch.stack([text_enc(input_ids[i], cond_mask[i]) for i in range(B)])  # B 1+num_images L D
 
                 model_kwargs = dict(encoder_hidden_states=cond, attention_mask=attn_mask,
-                                    encoder_attention_mask=cond_mask, use_image_num=args.use_image_num)
-                t = torch.randint(0, diffusion.num_timesteps, (x.shape[0],), device=accelerator.device)
+                                    encoder_attention_mask=cond_mask, use_image_num=args.use_image_num,
+                                    noise=noise)  # fix noise
+                # t = torch.randint(0, diffusion.num_timesteps, (x.shape[0],), device=accelerator.device)
+                t = torch.tensor(timestep, device=accelerator.device)
                 loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
                 loss = loss_dict["loss"].mean()
 

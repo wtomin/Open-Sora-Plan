@@ -432,7 +432,20 @@ class TemporalRandomCrop(object):
         begin_index = random.randint(0, rand_end)
         end_index = min(begin_index + self.size, total_frames)
         return begin_index, end_index
+class CropFromStart(object):
+    """Temporally crop the given frame indices at a random location.
 
+    Args:
+        size (int): Desired length of frames will be seen in the model.
+    """
+
+    def __init__(self, size):
+        self.size = size
+
+    def __call__(self, total_frames):
+        begin_index = 0
+        end_index = min(begin_index + self.size, total_frames)
+        return begin_index, end_index
 
 if __name__ == '__main__':
     from torchvision import transforms

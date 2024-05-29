@@ -14,7 +14,6 @@ from opensora.utils.dataset_utils import DecordInit
 from opensora.utils.utils import text_preprocessing
 
 
-
 class T2V_dataset(Dataset):
     def __init__(self, args, transform, temporal_sample, tokenizer):
 
@@ -109,3 +108,21 @@ class T2V_dataset(Dataset):
 
     def get_img_cap_list(self):
         raise NotImplementedError
+    
+    
+class T2V_datasetFixRandomness(T2V_dataset):
+    def __init__(self, *args, **kwargs):
+        assert "timesteps" in kwargs
+        self.timesteps = kwargs["timesteps"]
+        del kwargs["timesteps"]
+        assert "noise" in kwargs
+        self.noise = kwargs["noise"]
+        del kwargs["noise"]
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, idx):
+        batch = super().__getitem__(idx)
+        timestep = self.timesteps[idx]
+        noise = self.noise
+        batch += (timestep, noise)
+        return batch
