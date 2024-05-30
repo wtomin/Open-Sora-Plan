@@ -329,7 +329,11 @@ def main(args):
     args.data_path = new_json_file  # change to created dataset
 
     # create a list of timesteps
-    timesteps = np.linspace(0, diffusion.num_timesteps, num_samples).astype(np.int32)
+    use_single_timestep = False  # whether to use single time steps
+    if use_single_timestep:
+        timesteps = np.array([500] * num_samples).astype(np.int32)
+    else:
+        timesteps = np.linspace(0, diffusion.num_timesteps - 1, num_samples).astype(np.int32)
     # create/load a random noise tensor (for diffusion forward steps)
     noise_fp = "noise.npy"
     assert os.path.exists(noise_fp), f"{noise_fp} does not exist!"

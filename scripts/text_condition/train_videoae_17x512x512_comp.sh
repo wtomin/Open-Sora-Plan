@@ -1,9 +1,9 @@
 export WANDB_KEY=""
 export ENTITY=""
 export PROJECT="t2v-f17-512-img4-videovae488-bf16-ckpt-xformers-bs4-lr2e-5-t5"
-# accelerate launch \
-    # --config_file scripts/accelerate_configs/deepspeed_zero2_config.yaml \
-    python opensora/train/train_t2v.py \
+accelerate launch \
+    --config_file scripts/accelerate_configs/deepspeed_zero2_config.yaml \
+    opensora/train/train_t2v.py \
     --model LatteT2V-XL/122 \
     --text_encoder_name DeepFloyd/t5-v1_1-xxl \
     --dataset t2v \
@@ -32,4 +32,4 @@ export PROJECT="t2v-f17-512-img4-videovae488-bf16-ckpt-xformers-bs4-lr2e-5-t5"
     --model_max_length 300 \
     --use_image_num 4 \
     --use_img_from_vid \
-    # --use_deepspeed \
+    --use_deepspeed \
