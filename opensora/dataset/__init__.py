@@ -45,7 +45,7 @@ ae_denorm = {
     'vqgan_gumbel_f8': lambda x: (x + 1.) / 2.,
 }
 
-def getdataset(args, kwargs):
+def getdataset(args, kwargs={}):
     # temporal_sample = TemporalRandomCrop(args.num_frames * args.sample_rate)  # 16 x
     temporal_sample = CropFromStart(args.num_frames * args.sample_rate)  # 16 x
     norm_fun = ae_norm[args.ae]

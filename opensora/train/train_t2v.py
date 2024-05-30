@@ -33,7 +33,8 @@ from huggingface_hub import create_repo
 from packaging import version
 from tqdm.auto import tqdm
 from transformers import HfArgumentParser, TrainingArguments, AutoTokenizer
-
+from torchvision.transforms import Lambda
+from torchvision import transforms
 import diffusers
 from diffusers import DDPMScheduler, PNDMScheduler
 from diffusers.optimization import get_scheduler
@@ -42,6 +43,8 @@ from diffusers.utils import check_min_version, is_wandb_available
 
 from opensora.dataset import getdataset, ae_denorm
 from opensora.models.ae import getae, getae_wrapper
+from opensora.dataset.transform import ToTensorVideo, CropFromStart,  CenterCropResizeVideo
+from opensora.dataset.t2v_datasets import T2V_datasetFixRandomness
 from opensora.models.ae.videobase import CausalVQVAEModelWrapper, CausalVAEModelWrapper
 from opensora.models.diffusion.diffusion import create_diffusion_T as create_diffusion
 from opensora.models.diffusion.latte.modeling_latte import LatteT2V
@@ -328,7 +331,8 @@ def main(args):
     # create a list of timesteps
     timesteps = np.linspace(0, diffusion.num_timesteps, num_samples).astype(np.int32)
     # create/load a random noise tensor (for diffusion forward steps)
-    noise_fp = os.path.join(args.output_dir, "noise.npy")
+    noise_fp = "noise.npy"
+    assert os.path.exists(noise_fp), f"{noise_fp} does not exist!"
     if not os.path.exists(noise_fp):
         noise = np.random.randn(
             4, video_length + args.use_image_num, latent_size[0], latent_size[1]
@@ -337,8 +341,21 @@ def main(args):
     else:
         noise = np.load(noise_fp)
         logger.info(f"Load noise from {noise_fp}")
-    kwargs = {"timesteps": timesteps, "noise": noise}
-    train_dataset = getdataset(args, kwargs)
+    kwargs = {"timesteps": timesteps, "noise": noise.astype(np.float32)}
+    # train_dataset = getdataset(args, kwargs=kwargs)
+    ae_norm = {
+        'CausalVAEModel_4x8x8': Lambda(lambda x: 2. * x - 1.),
+    }
+    temporal_sample = CropFromStart(args.num_frames * args.sample_rate)  # 16 x
+    norm_fun = ae_norm[args.ae]
+    transform = transforms.Compose([
+        ToTensorVideo(),
+        CenterCropResizeVideo(args.max_image_size),
+        norm_fun
+    ])
+    tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_name, cache_dir='./cache_dir')
+    train_dataset = T2V_datasetFixRandomness(args, transform=transform, temporal_sample=temporal_sample, tokenizer=tokenizer,
+                                        **kwargs)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=False,  # fix randomness
@@ -355,6 +372,8 @@ def main(args):
             for j, (item0, item1) in enumerate(zip(pre_load_batch, batch)):
                 if j != 3:
                     assert np.allclose(item0.numpy(), item1.numpy()), f"Mismatch between batch0 and batch{i}"
+                else:
+                    print(f"timestep is {item1} for {i}th batch")
     logger.info("The dataset randomness test has passed. The randomness from dataloader is removed.")
     # Scheduler and math around the number of training steps.
     
@@ -468,11 +487,10 @@ def main(args):
                         cond = torch.stack([text_enc(input_ids[i], cond_mask[i]) for i in range(B)])  # B 1+num_images L D
 
                 model_kwargs = dict(encoder_hidden_states=cond, attention_mask=attn_mask,
-                                    encoder_attention_mask=cond_mask, use_image_num=args.use_image_num,
-                                    noise=noise)  # fix noise
+                                    encoder_attention_mask=cond_mask, use_image_num=args.use_image_num)  # fix noise
                 # t = torch.randint(0, diffusion.num_timesteps, (x.shape[0],), device=accelerator.device)
                 t = torch.tensor(timestep, device=accelerator.device)
-                loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
+                loss_dict = diffusion.training_losses(model, x, t, model_kwargs, noise=noise)
                 loss = loss_dict["loss"].mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
