@@ -33,3 +33,4 @@ accelerate launch \
     --use_image_num 4 \
     --use_img_from_vid \
     --use_deepspeed \
+    --adam_epsilon 1e-6 \
