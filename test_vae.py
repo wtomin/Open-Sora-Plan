@@ -19,7 +19,7 @@ from opensora.models.ae.videobase import CausalVAEModel
 def main():
     device = "cuda"
     # vae = getae_wrapper(args.ae)(args.model_path, subfolder="vae", cache_dir='cache_dir', **kwarg).to(device)
-    vae = getae_wrapper('CausalVAEModel_4x8x8')("LanguageBind/Open-Sora-Plan-v1.1.0/vae").to(device)
+    vae = getae_wrapper('CausalVAEModel_4x8x8')("LanguageBind/Open-Sora-Plan-v1.1.0/vae").to(device, dtype=torch.float32)
     vae.vae.enable_tiling()
     vae.vae.tile_overlap_factor = 0.25
     vae.eval()
@@ -38,3 +38,6 @@ def main():
         video_recon = vae.decode(latents)  # b t c h w
         np.save(os.path.join(torch_folder, "video_recon_torch.npy"),
                 video_recon.cpu().float().numpy())
+
+if __name__ == "__main__":
+    main()
