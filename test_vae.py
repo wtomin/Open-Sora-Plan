@@ -30,7 +30,8 @@ def main():
         os.makedirs(torch_folder, exist_ok=True)
     
     with torch.no_grad():
-        x_vae = np.load(os.path.join(torch_folder, "x_vae_torch.npy"))
+        x_vae = np.load(os.path.join(torch_folder, "x_vae.npy"))
+        x_vae = torch.tensor(x_vae)
         x_vae = x_vae.to(device, dtype=torch.float32)  # b c t h w
         latents = vae.encode(x_vae)
         np.save(os.path.join(torch_folder, "latents_torch.npy"),
