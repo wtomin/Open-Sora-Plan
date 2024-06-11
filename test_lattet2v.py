@@ -13,7 +13,7 @@ sys.path.append(os.path.split(sys.path[0])[0])
 import imageio
 
 
-def main(args):
+def main():
     torch.set_grad_enabled(False)
     device = "cuda"
     
@@ -27,7 +27,8 @@ def main(args):
     # Load model:
     transformer_model = LatteT2V.from_pretrained("LanguageBind/Open-Sora-Plan-v1.1.0/", subfolder="65x512x512",torch_dtype=torch.float32).to(device)
     latent_model_input = np.load(os.path.join(torch_folder, "latents.npy"))
-    current_timestep = torch.tensor([894], dtype=torch.int32)
+    latent_model_input = torch.tensor(latent_model_input).to(device, dtype=torch.float32)
+    current_timestep = torch.tensor([894], dtype=torch.int32).to(device)
     
     prompt_embeds = np.load(os.path.join(torch_folder, 'prompt_embeds.npy'))
     prompt_embeds = torch.tensor(prompt_embeds).to(device, dtype=torch.float32)
