@@ -47,3 +47,7 @@ def main(args):
                     )[0]
 
     np.save(os.path.join(torch_folder, "noise_pred_torch.npy"), noise_pred.cpu().detach().numpy())
+    
+    
+if __name__ == "__main__":
+    main()
